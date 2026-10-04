@@ -1,293 +1,203 @@
 import 'package:flutter/material.dart';
-import 'package:shupick_staff/dashboard/dashboard_page.dart';
+import 'package:shupick_staff/auth/staff_session.dart';
+import 'package:shupick_staff/view/staff_registration.dart';
 
 class Login extends StatefulWidget {
-  const Login({super.key, required this.onSelect});
+  const Login({super.key, required this.onSignIn, this.initialError});
 
-  final void Function(StaffRole role, String branch) onSelect;
+  final Future<void> Function(String email, String password) onSignIn;
+  final String? initialError;
 
   @override
   State<Login> createState() => _LoginState();
 }
 
 class _LoginState extends State<Login> {
-  String branch = '강남구';
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  bool busy = false;
+  bool hidePassword = true;
+  String? error;
 
-  static const districts = [
-    '강남구',
-    '강동구',
-    '강북구',
-    '강서구',
-    '관악구',
-    '광진구',
-    '구로구',
-    '금천구',
-    '노원구',
-    '도봉구',
-    '동대문구',
-    '동작구',
-    '마포구',
-    '서대문구',
-    '서초구',
-    '성동구',
-    '성북구',
-    '송파구',
-    '양천구',
-    '영등포구',
-    '용산구',
-    '은평구',
-    '종로구',
-    '중구',
-    '중랑구',
-  ];
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (busy) return;
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() => error = '이메일과 비밀번호를 입력해주세요.');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.onSignIn(email, password);
+    } on StaffAuthException catch (exception) {
+      if (mounted) setState(() => error = exception.message);
+    } catch (_) {
+      if (mounted) setState(() => error = '로그인 중 문제가 발생했습니다. 다시 시도해주세요.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFEDF2F8),
     body: SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 900;
-          final branchGroup = _group(
-            title: '대리점',
-            description: '상품 입고, 고객 수령, 재고·반품·교환',
-            children: [
-              const Text(
-                '대리점 선택',
-                style: TextStyle(
-                  color: Color(0xFF596A82),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF3175EE),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Text(
+                        'S',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 13),
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'SHOEPICK',
+                          style: TextStyle(
+                            color: Color(0xFF12315E),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        Text(
+                          '직원 태블릿',
+                          style: TextStyle(color: Color(0xFF5F7495)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 7),
-              DropdownButtonFormField<String>(
-                key: const Key('branch-selector'),
-                initialValue: branch,
-                isExpanded: true,
-                items: [
-                  for (final district in districts)
-                    DropdownMenuItem(value: district, child: Text(district)),
-                ],
-                onChanged: (value) {
-                  if (value != null) setState(() => branch = value);
-                },
-                decoration: InputDecoration(
-                  isDense: true,
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(9),
+                const SizedBox(height: 32),
+                Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: const Color(0xFFDCE5F0)),
+                    borderRadius: BorderRadius.circular(18),
                   ),
-                ),
-              ),
-              const SizedBox(height: 15),
-              _roleButton(StaffRole.branchStaff),
-              const SizedBox(height: 10),
-              _roleButton(StaffRole.branchManager),
-            ],
-          );
-          final headquartersGroup = _group(
-            title: '본사',
-            description: '주문·배송, 고객 관리, 구매 품의와 결재',
-            children: [
-              _roleButton(StaffRole.hqStaff),
-              const SizedBox(height: 10),
-              _roleButton(StaffRole.teamLeader),
-              const SizedBox(height: 10),
-              _roleButton(StaffRole.director),
-              const SizedBox(height: 10),
-              _roleButton(StaffRole.executive),
-            ],
-          );
-          return SingleChildScrollView(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1180),
-                child: Padding(
-                  padding: EdgeInsets.all(wide ? 32 : 24),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            width: 42,
-                            height: 42,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF3175EE),
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: const Text(
-                              'S',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 23,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          const Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'SHOEPICK',
-                                style: TextStyle(
-                                  color: Color(0xFF12315E),
-                                  fontSize: 21,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              Text(
-                                '직원 태블릿',
-                                style: TextStyle(
-                                  color: Color(0xFF5F7495),
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Spacer(),
-                          if (wide) const Chip(label: Text('직책별 화면 체험')),
-                        ],
-                      ),
-                      const SizedBox(height: 40),
                       const Text(
-                        '업무에 맞는 화면으로 시작하세요',
+                        '직원 로그인',
                         style: TextStyle(
-                          color: Color(0xFF132A4B),
-                          fontSize: 29,
+                          color: Color(0xFF14243E),
+                          fontSize: 26,
                           fontWeight: FontWeight.w800,
-                          letterSpacing: -1,
                         ),
                       ),
-                      const SizedBox(height: 7),
+                      const SizedBox(height: 8),
                       const Text(
-                        '대리점과 본사의 직책을 선택하면 해당 업무 화면이 열립니다.',
-                        style: TextStyle(
-                          color: Color(0xFF6F7E93),
-                          fontSize: 14,
+                        '등록된 직원 계정으로 로그인하면 소속 지점과 업무 권한을 불러옵니다.',
+                        style: TextStyle(color: Color(0xFF6F7E93)),
+                      ),
+                      const SizedBox(height: 28),
+                      TextField(
+                        key: const Key('staff-email'),
+                        controller: emailController,
+                        enabled: !busy,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          labelText: '직원 이메일',
+                          border: OutlineInputBorder(),
                         ),
                       ),
-                      const SizedBox(height: 27),
-                      if (wide)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(child: branchGroup),
-                            const SizedBox(width: 20),
-                            Expanded(child: headquartersGroup),
-                          ],
-                        )
-                      else
-                        Column(
-                          children: [
-                            branchGroup,
-                            const SizedBox(height: 18),
-                            headquartersGroup,
-                          ],
+                      const SizedBox(height: 16),
+                      TextField(
+                        key: const Key('staff-password'),
+                        controller: passwordController,
+                        enabled: !busy,
+                        obscureText: hidePassword,
+                        autofillHints: const [AutofillHints.password],
+                        onSubmitted: (_) => _submit(),
+                        decoration: InputDecoration(
+                          labelText: '비밀번호',
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            tooltip: hidePassword ? '비밀번호 표시' : '비밀번호 숨기기',
+                            onPressed: () =>
+                                setState(() => hidePassword = !hidePassword),
+                            icon: Icon(
+                              hidePassword
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                          ),
                         ),
-                      const SizedBox(height: 18),
-                      const Text(
-                        '이 화면은 기능 시연용입니다. 직책 선택은 실제 계정 인증을 대신하지 않습니다.',
-                        style: TextStyle(
-                          color: Color(0xFF73849B),
-                          fontSize: 12,
+                      ),
+                      if ((error ?? widget.initialError) != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          (error ?? widget.initialError)!,
+                          style: const TextStyle(color: Color(0xFFB52638)),
                         ),
+                      ],
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        key: const Key('staff-sign-in'),
+                        onPressed: busy ? null : _submit,
+                        child: busy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('로그인'),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton(
+                        key: const Key('staff-register'),
+                        onPressed: busy
+                            ? null
+                            : () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const StaffRegistrationPage(),
+                                ),
+                              ),
+                        child: const Text('직원 등록'),
                       ),
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
-          );
-        },
-      ),
-    ),
-  );
-
-  Widget _group({
-    required String title,
-    required String description,
-    required List<Widget> children,
-  }) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(23),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: const Color(0xFFDCE5F0)),
-      borderRadius: BorderRadius.circular(18),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0F24436F),
-          blurRadius: 35,
-          offset: Offset(0, 14),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: Color(0xFF14243E),
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          description,
-          style: const TextStyle(color: Color(0xFF7A899C), fontSize: 12),
-        ),
-        const SizedBox(height: 20),
-        ...children,
-      ],
-    ),
-  );
-
-  Widget _roleButton(StaffRole role) => Material(
-    color: const Color(0xFFFAFCFF),
-    shape: RoundedRectangleBorder(
-      side: const BorderSide(color: Color(0xFFDFE8F3)),
-      borderRadius: BorderRadius.circular(11),
-    ),
-    child: InkWell(
-      key: Key('role-${role.name}'),
-      borderRadius: BorderRadius.circular(11),
-      onTap: () => widget.onSelect(role, branch),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    role.label,
-                    style: const TextStyle(
-                      color: Color(0xFF193653),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    role.description,
-                    style: const TextStyle(
-                      color: Color(0xFF718399),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward, color: Color(0xFF2872DB), size: 20),
-          ],
         ),
       ),
     ),

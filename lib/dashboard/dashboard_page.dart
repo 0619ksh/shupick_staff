@@ -19,6 +19,16 @@ enum StaffRole {
   executive('본사 임원', '판매·재고·발주 분석', false);
 
   const StaffRole(this.label, this.description, this.isBranch);
+
+  static StaffRole? fromCode(String code) => switch (code) {
+    'BRANCH_STAFF' => StaffRole.branchStaff,
+    'BRANCH_MANAGER' => StaffRole.branchManager,
+    'HQ_STAFF' => StaffRole.hqStaff,
+    'TEAM_LEAD' => StaffRole.teamLeader,
+    'DIRECTOR' => StaffRole.director,
+    'EXECUTIVE' => StaffRole.executive,
+    _ => null,
+  };
   final String label;
   final String description;
   final bool isBranch;
@@ -28,13 +38,21 @@ class DashboardPage extends StatefulWidget {
   const DashboardPage({
     super.key,
     required this.initialRole,
+    required this.availableRoles,
+    required this.employeeName,
     required this.branch,
-    required this.onChangeRole,
+    required this.availableBranches,
+    required this.onSelectBranch,
+    required this.onSignOut,
   });
 
   final StaffRole initialRole;
+  final List<StaffRole> availableRoles;
+  final String employeeName;
   final String branch;
-  final VoidCallback onChangeRole;
+  final Map<int, String> availableBranches;
+  final ValueChanged<int> onSelectBranch;
+  final VoidCallback onSignOut;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -84,11 +102,12 @@ class _DashboardPageState extends State<DashboardPage> {
                   width: 260,
                   child: _Sidebar(
                     role: role,
+                    employeeName: widget.employeeName,
                     branch: widget.branch,
                     selectedView: selectedView,
                     inDrawer: true,
                     onSelect: _selectView,
-                    onChangeRole: widget.onChangeRole,
+                    onSignOut: widget.onSignOut,
                   ),
                 )
               : null,
@@ -102,7 +121,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       role: role,
                       selectedView: selectedView,
                       onSelect: _selectView,
-                      onChangeRole: widget.onChangeRole,
+                      onSignOut: widget.onSignOut,
                     ),
                   ),
                 if (!compact && !tabletPortrait)
@@ -110,10 +129,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     width: 236,
                     child: _Sidebar(
                       role: role,
+                      employeeName: widget.employeeName,
                       branch: widget.branch,
                       selectedView: selectedView,
                       onSelect: _selectView,
-                      onChangeRole: widget.onChangeRole,
+                      onSignOut: widget.onSignOut,
                     ),
                   ),
                 Expanded(
@@ -225,7 +245,7 @@ class _DashboardPageState extends State<DashboardPage> {
           key: const Key('role-selector'),
           tooltip: '직책별 대시보드 보기',
           onSelected: _selectRole,
-          itemBuilder: (context) => StaffRole.values
+          itemBuilder: (context) => widget.availableRoles
               .map(
                 (value) =>
                     PopupMenuItem(value: value, child: Text(value.label)),
@@ -233,10 +253,24 @@ class _DashboardPageState extends State<DashboardPage> {
               .toList(),
           child: _ChipLabel(label: '${role.label}  ▾', highlighted: true),
         ),
-        OutlinedButton(
-          onPressed: widget.onChangeRole,
-          child: const Text('직책 바꾸기'),
-        ),
+        if (role.isBranch && widget.availableBranches.isNotEmpty)
+          widget.availableBranches.length == 1
+              ? _ChipLabel(label: widget.branch)
+              : PopupMenuButton<int>(
+                  key: const Key('branch-selector'),
+                  tooltip: '소속 지점 선택',
+                  onSelected: widget.onSelectBranch,
+                  itemBuilder: (context) => widget.availableBranches.entries
+                      .map(
+                        (entry) => PopupMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                      )
+                      .toList(),
+                  child: _ChipLabel(label: '${widget.branch}  ▾'),
+                ),
+        OutlinedButton(onPressed: widget.onSignOut, child: const Text('로그아웃')),
       ],
     );
     if (stacked) {
@@ -729,17 +763,19 @@ class _Metrics extends StatelessWidget {
 class _Sidebar extends StatelessWidget {
   const _Sidebar({
     required this.role,
+    required this.employeeName,
     required this.branch,
     required this.selectedView,
     required this.onSelect,
-    required this.onChangeRole,
+    required this.onSignOut,
     this.inDrawer = false,
   });
   final StaffRole role;
+  final String employeeName;
   final String branch;
   final StaffView selectedView;
   final ValueChanged<StaffView> onSelect;
-  final VoidCallback onChangeRole;
+  final VoidCallback onSignOut;
   final bool inDrawer;
 
   @override
@@ -814,7 +850,7 @@ class _Sidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '${role.label}${role.isBranch ? ' · $branch' : ''}',
+                      '$employeeName · ${role.label}${role.isBranch ? ' · $branch' : ''}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -892,13 +928,13 @@ class _Sidebar extends StatelessWidget {
                 ),
               ),
               OutlinedButton(
-                onPressed: onChangeRole,
+                onPressed: onSignOut,
                 style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-                child: const Text('직책 바꾸기'),
+                child: const Text('로그아웃'),
               ),
               const SizedBox(height: 8),
               const Text(
-                '직책별 화면 시안입니다.\n업무 처리는 추후 연결됩니다.',
+                '업무 화면은 시연 데이터입니다.\n처리 기능은 차례로 연결됩니다.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color(0xFF9CB3D6),
@@ -919,13 +955,13 @@ class _TabletRail extends StatelessWidget {
     required this.role,
     required this.selectedView,
     required this.onSelect,
-    required this.onChangeRole,
+    required this.onSignOut,
   });
 
   final StaffRole role;
   final StaffView selectedView;
   final ValueChanged<StaffView> onSelect;
-  final VoidCallback onChangeRole;
+  final VoidCallback onSignOut;
 
   @override
   Widget build(BuildContext context) {
@@ -1010,8 +1046,8 @@ class _TabletRail extends StatelessWidget {
               ),
             ),
             IconButton(
-              onPressed: onChangeRole,
-              tooltip: '직책 바꾸기',
+              onPressed: onSignOut,
+              tooltip: '로그아웃',
               icon: const Icon(
                 Icons.manage_accounts_outlined,
                 color: Colors.white,

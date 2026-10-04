@@ -1,22 +1,105 @@
 import 'package:flutter/material.dart';
+import 'package:shupick_staff/auth/staff_session.dart';
 import 'package:shupick_staff/dashboard/dashboard_page.dart';
 import 'package:shupick_staff/view/login.dart';
 
 void main() => runApp(const MyApp());
 
 class MyApp extends StatefulWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, this.authRepository});
+
+  final StaffAuthRepository? authRepository;
 
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> {
-  StaffRole? selectedRole;
-  String selectedBranch = '강남구';
+  late final StaffAuthRepository authRepository;
+  StaffProfile? profile;
+  int? selectedBranchId;
+  bool loading = true;
+  String? initialError;
+
+  @override
+  void initState() {
+    super.initState();
+    authRepository = widget.authRepository ?? FirebaseStaffAuthRepository();
+    _restoreSession();
+  }
+
+  List<StaffRole> _rolesFor(StaffProfile staff) => [
+    for (final role in staff.roles)
+      if (StaffRole.fromCode(role.code) case final StaffRole mapped)
+        if (!mapped.isBranch || staff.branches.isNotEmpty) mapped,
+  ];
+
+  void _validateProfile(StaffProfile staff) {
+    if (_rolesFor(staff).isEmpty) {
+      throw const StaffAuthException('사용 가능한 직책 또는 소속 지점이 없습니다. 관리자에게 문의해주세요.');
+    }
+  }
+
+  Future<void> _restoreSession() async {
+    try {
+      final restored = await authRepository.restoreSession();
+      if (restored != null) _validateProfile(restored);
+      if (!mounted) return;
+      setState(() {
+        profile = restored;
+        selectedBranchId = restored?.branches.firstOrNull?.id;
+        initialError = null;
+        loading = false;
+      });
+    } on StaffAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        initialError = error.message;
+        loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        initialError = '직원 로그인 상태를 확인하지 못했습니다.';
+        loading = false;
+      });
+    }
+  }
+
+  Future<void> _signIn(String email, String password) async {
+    final signedIn = await authRepository.signIn(email, password);
+    try {
+      _validateProfile(signedIn);
+    } on StaffAuthException {
+      await authRepository.signOut();
+      rethrow;
+    }
+    if (!mounted) return;
+    setState(() {
+      profile = signedIn;
+      selectedBranchId = signedIn.branches.firstOrNull?.id;
+      initialError = null;
+    });
+  }
+
+  Future<void> _signOut() async {
+    await authRepository.signOut();
+    if (!mounted) return;
+    setState(() {
+      profile = null;
+      selectedBranchId = null;
+      initialError = null;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    final staff = profile;
+    final branches = staff?.branches ?? const <StaffBranch>[];
+    final branch = branches
+        .where((item) => item.id == selectedBranchId)
+        .firstOrNull;
+    final allowedRoles = staff == null ? <StaffRole>[] : _rolesFor(staff);
     return MaterialApp(
       title: 'SHOEPICK | 직원 태블릿',
       debugShowCheckedModeBanner: false,
@@ -37,17 +120,21 @@ class _MyAppState extends State<MyApp> {
           contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
         ),
       ),
-      home: selectedRole == null
-          ? Login(
-              onSelect: (role, branch) => setState(() {
-                selectedRole = role;
-                selectedBranch = branch;
-              }),
-            )
+      home: loading
+          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          : staff == null
+          ? Login(onSignIn: _signIn, initialError: initialError)
           : DashboardPage(
-              initialRole: selectedRole!,
-              branch: selectedBranch,
-              onChangeRole: () => setState(() => selectedRole = null),
+              key: ValueKey(staff.id),
+              initialRole: allowedRoles.first,
+              availableRoles: allowedRoles,
+              employeeName: staff.name,
+              branch: branch?.name ?? '본사',
+              availableBranches: {
+                for (final item in branches) item.id: item.name,
+              },
+              onSelectBranch: (id) => setState(() => selectedBranchId = id),
+              onSignOut: _signOut,
             ),
     );
   }
