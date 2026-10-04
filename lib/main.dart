@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:shupick_staff/view/login.dart';
+import 'package:shupick_staff/dashboard/dashboard_page.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return GetMaterialApp(
-      title: 'Flutter Demo',
+    return MaterialApp(
+      title: 'SOLE OPS | 직원 태블릿',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFEDF2F8),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1768E9),
+          surface: Colors.white,
+        ),
       ),
-      home: const Login(),
+      home: const DashboardPage(),
     );
   }
 }
