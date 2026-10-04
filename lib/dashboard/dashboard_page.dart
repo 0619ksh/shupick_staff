@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:shupick_staff/dashboard/staff_pages.dart';
+import 'package:shupick_staff/dashboard/staff_views.dart';
 
 const _navy = Color(0xFF102B58);
 const _blue = Color(0xFF1768E9);
@@ -9,7 +11,7 @@ const _red = Color(0xFFCF3948);
 const _green = Color(0xFF126D66);
 
 enum StaffRole {
-  branchStaff('대리점 직원', '입고·QR 수령·반품·교환 처리', true),
+  branchStaff('대리점 직원', '입고·픽업 결제 코드 확인·반품·교환 처리', true),
   branchManager('대리점장', '지점 재고와 운영·본사 소통', true),
   hqStaff('본사 사원', '주문·고객 문의·배송·구매 품의', false),
   teamLeader('본사 팀장', '구매 품의·고객 혜택 결재·지점 이슈 조정', false),
@@ -23,50 +25,130 @@ enum StaffRole {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({
+    super.key,
+    required this.initialRole,
+    required this.branch,
+    required this.onChangeRole,
+  });
+
+  final StaffRole initialRole;
+  final String branch;
+  final VoidCallback onChangeRole;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
 class _DashboardPageState extends State<DashboardPage> {
-  StaffRole role = StaffRole.branchStaff;
+  late StaffRole role;
+  StaffView selectedView = StaffView.overview;
+  final ScrollController _contentScrollController = ScrollController();
+
+  void _selectView(StaffView view) {
+    if (selectedView == view) return;
+    setState(() => selectedView = view);
+    if (_contentScrollController.hasClients) _contentScrollController.jumpTo(0);
+  }
+
+  void _selectRole(StaffRole value) {
+    setState(() {
+      role = value;
+      selectedView = StaffView.overview;
+    });
+    if (_contentScrollController.hasClients) _contentScrollController.jumpTo(0);
+  }
+
+  @override
+  void dispose() {
+    _contentScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    role = widget.initialRole;
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 760;
+        final compact = constraints.maxWidth < 700;
+        final tabletPortrait =
+            constraints.maxWidth >= 700 && constraints.maxWidth < 1100;
         return Scaffold(
           drawer: compact
-              ? Drawer(width: 260, child: _Sidebar(role: role))
+              ? Drawer(
+                  width: 260,
+                  child: _Sidebar(
+                    role: role,
+                    branch: widget.branch,
+                    selectedView: selectedView,
+                    inDrawer: true,
+                    onSelect: _selectView,
+                    onChangeRole: widget.onChangeRole,
+                  ),
+                )
               : null,
           body: SafeArea(
             child: Row(
               children: [
-                if (!compact) SizedBox(width: 236, child: _Sidebar(role: role)),
+                if (tabletPortrait)
+                  SizedBox(
+                    width: 88,
+                    child: _TabletRail(
+                      role: role,
+                      selectedView: selectedView,
+                      onSelect: _selectView,
+                      onChangeRole: widget.onChangeRole,
+                    ),
+                  ),
+                if (!compact && !tabletPortrait)
+                  SizedBox(
+                    width: 236,
+                    child: _Sidebar(
+                      role: role,
+                      branch: widget.branch,
+                      selectedView: selectedView,
+                      onSelect: _selectView,
+                      onChangeRole: widget.onChangeRole,
+                    ),
+                  ),
                 Expanded(
                   child: SingleChildScrollView(
+                    controller: _contentScrollController,
                     child: Center(
                       child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1520),
+                        constraints: const BoxConstraints(maxWidth: 1280),
                         child: Padding(
                           padding: EdgeInsets.fromLTRB(
-                            compact ? 16 : 32,
-                            compact ? 22 : 30,
-                            compact ? 16 : 32,
+                            compact ? 16 : 24,
+                            compact ? 20 : 24,
+                            compact ? 16 : 24,
                             44,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _header(compact),
+                              _header(compact, constraints.maxWidth < 1100),
                               const SizedBox(height: 24),
-                              _Metrics(items: _metricsFor(role)),
-                              const SizedBox(height: 18),
-                              _alerts(),
-                              const SizedBox(height: 18),
-                              _roleSections(),
+                              if (selectedView == StaffView.overview) ...[
+                                _Metrics(items: _metricsFor(role)),
+                                const SizedBox(height: 18),
+                                _alerts(),
+                                const SizedBox(height: 18),
+                                _roleSections(),
+                              ] else
+                                StaffPage(
+                                  key: ValueKey(
+                                    '${role.name}-${selectedView.name}',
+                                  ),
+                                  view: selectedView,
+                                  roleKey: role.name,
+                                  isBranch: role.isBranch,
+                                ),
                             ],
                           ),
                         ),
@@ -82,11 +164,15 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  Widget _header(bool compact) {
+  Widget _header(bool compact, bool stacked) {
     final now = DateTime.now();
     final date =
         '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
-    final heading = role == StaffRole.executive ? '판매·재고 현황' : '대시보드';
+    final heading = viewTitle(
+      selectedView,
+      isBranch: role.isBranch,
+      role: role.name,
+    );
     final title = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -119,7 +205,11 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         const SizedBox(height: 5),
         Text(
-          role.description,
+          viewDescription(
+            selectedView,
+            isBranch: role.isBranch,
+            role: role.name,
+          ),
           style: const TextStyle(color: _muted, fontSize: 14),
         ),
       ],
@@ -134,7 +224,7 @@ class _DashboardPageState extends State<DashboardPage> {
         PopupMenuButton<StaffRole>(
           key: const Key('role-selector'),
           tooltip: '직책별 대시보드 보기',
-          onSelected: (value) => setState(() => role = value),
+          onSelected: _selectRole,
           itemBuilder: (context) => StaffRole.values
               .map(
                 (value) =>
@@ -143,9 +233,13 @@ class _DashboardPageState extends State<DashboardPage> {
               .toList(),
           child: _ChipLabel(label: '${role.label}  ▾', highlighted: true),
         ),
+        OutlinedButton(
+          onPressed: widget.onChangeRole,
+          child: const Text('직책 바꾸기'),
+        ),
       ],
     );
-    if (compact) {
+    if (stacked) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [title, const SizedBox(height: 16), actions],
@@ -166,7 +260,7 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _alerts() {
     final alerts = switch (role) {
       StaffRole.branchStaff || StaffRole.branchManager => const [
-        ('대리점 도착 · 고객 인도 대기', '입고 완료 주문 2건 · 고객 QR과 실물을 확인하세요.'),
+        ('대리점 도착 · 고객 인도 대기', '입고 완료 주문 2건 · 픽업 결제 코드와 실물을 확인하세요.'),
         ('배송 중 · 입고 확인 필요', '배송 중 주문 2건 · 실제 도착 후 입고 처리하세요.'),
         ('교환품 입고·인도 확인', '진행 중인 교환품 1건의 상태를 확인하세요.'),
       ],
@@ -270,8 +364,8 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           second: _Panel(
             title: '고객 수령 대기',
-            subtitle: 'QR 인증 후 고객·상품·지점을 확인하세요.',
-            trailing: 'QR 수령 →',
+            subtitle: '픽업 결제 코드 확인 후 고객·상품·지점을 확인하세요.',
+            trailing: '픽업 코드 확인 →',
             child: const Column(
               children: [
                 _OrderTile(
@@ -525,7 +619,7 @@ class _MetricInfo {
 List<_MetricInfo> _metricsFor(StaffRole role) => switch (role) {
   StaffRole.branchStaff => const [
     _MetricInfo('오늘 입고 예정', '2건', '등록된 오늘 도착 예정'),
-    _MetricInfo('고객 수령 대기', '2건', '일반 주문·교환품 QR 확인'),
+    _MetricInfo('고객 수령 대기', '2건', '일반 주문·교환품 픽업 코드 확인'),
     _MetricInfo('반품 대기', '0건', '방문 접수 즉시 처리'),
     _MetricInfo('교환 진행', '1건', '본사 발송·입고·인도'),
   ],
@@ -571,7 +665,7 @@ class _Metrics extends StatelessWidget {
     builder: (context, constraints) {
       final width = constraints.maxWidth;
       if (width <= 0) return const SizedBox.shrink();
-      final columns = width >= 1120
+      final columns = width >= 900
           ? items.length
           : width >= 400
           ? 2
@@ -633,54 +727,24 @@ class _Metrics extends StatelessWidget {
 }
 
 class _Sidebar extends StatelessWidget {
-  const _Sidebar({required this.role});
+  const _Sidebar({
+    required this.role,
+    required this.branch,
+    required this.selectedView,
+    required this.onSelect,
+    required this.onChangeRole,
+    this.inDrawer = false,
+  });
   final StaffRole role;
+  final String branch;
+  final StaffView selectedView;
+  final ValueChanged<StaffView> onSelect;
+  final VoidCallback onChangeRole;
+  final bool inDrawer;
 
   @override
   Widget build(BuildContext context) {
-    final items = switch (role) {
-      StaffRole.branchStaff => const [
-        '대시보드',
-        '입고',
-        'QR 수령',
-        '반품',
-        '교환',
-        '현재 재고',
-        '업무 소통',
-      ],
-      StaffRole.branchManager => const [
-        '대시보드',
-        '날짜별 재고',
-        '교환 현황',
-        '업무 소통',
-        '입고',
-        'QR 수령',
-        '반품',
-      ],
-      StaffRole.hqStaff => const [
-        '대시보드',
-        '주문',
-        '고객 관리',
-        '배송',
-        '교환 배송',
-        '재고',
-        '품의 작성',
-        '업무 소통',
-      ],
-      StaffRole.teamLeader => const ['대시보드', '결재함', '고객 관리', '업무 소통', '재고'],
-      StaffRole.director => const ['대시보드', '결재함', '재고'],
-      StaffRole.executive => const ['경영 대시보드', '판매 분석', '재고·발주', '결재 현황'],
-    };
-    final icons = [
-      Icons.dashboard_outlined,
-      Icons.inventory_2_outlined,
-      Icons.qr_code_scanner,
-      Icons.assignment_return_outlined,
-      Icons.sync_alt,
-      Icons.warehouse_outlined,
-      Icons.chat_bubble_outline,
-      Icons.people_outline,
-    ];
+    final items = menusForRole(role.name);
     return ColoredBox(
       color: _navy,
       child: SafeArea(
@@ -712,7 +776,7 @@ class _Sidebar extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'SOLE OPS',
+                        'SHOEPICK',
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 18,
@@ -750,7 +814,7 @@ class _Sidebar extends StatelessWidget {
                     ),
                     const SizedBox(height: 5),
                     Text(
-                      '${role.label}${role.isBranch ? ' · 강남구' : ''}',
+                      '${role.label}${role.isBranch ? ' · $branch' : ''}',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 13,
@@ -780,46 +844,61 @@ class _Sidebar extends StatelessWidget {
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 4),
                   itemBuilder: (context, index) {
-                    final selected = index == 0;
-                    return Container(
-                      height: 45,
-                      padding: const EdgeInsets.symmetric(horizontal: 13),
-                      decoration: BoxDecoration(
-                        color: selected ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            icons[index % icons.length],
-                            size: 19,
-                            color: selected
-                                ? const Color(0xFF124B9E)
-                                : const Color(0xFFD7E3F8),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              items[index],
-                              style: TextStyle(
-                                color: selected
-                                    ? const Color(0xFF124B9E)
-                                    : const Color(0xFFD7E3F8),
-                                fontSize: 13,
-                                fontWeight: selected
-                                    ? FontWeight.w800
-                                    : FontWeight.w600,
+                    final item = items[index];
+                    final selected = item.view == selectedView;
+                    return InkWell(
+                      key: Key('menu-${item.view.name}'),
+                      onTap: () {
+                        onSelect(item.view);
+                        if (inDrawer) Navigator.of(context).pop();
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        height: 54,
+                        padding: const EdgeInsets.symmetric(horizontal: 13),
+                        decoration: BoxDecoration(
+                          color: selected ? Colors.white : Colors.transparent,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              item.icon,
+                              size: 19,
+                              color: selected
+                                  ? const Color(0xFF124B9E)
+                                  : const Color(0xFFD7E3F8),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                item.label,
+                                style: TextStyle(
+                                  color: selected
+                                      ? const Color(0xFF124B9E)
+                                      : const Color(0xFFD7E3F8),
+                                  fontSize: 13,
+                                  fontWeight: selected
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
                 ),
               ),
+              OutlinedButton(
+                onPressed: onChangeRole,
+                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+                child: const Text('직책 바꾸기'),
+              ),
+              const SizedBox(height: 8),
               const Text(
-                '대시보드 화면 시안입니다.\n다른 업무 메뉴는 추후 연결됩니다.',
+                '직책별 화면 시안입니다.\n업무 처리는 추후 연결됩니다.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: Color(0xFF9CB3D6),
@@ -829,6 +908,117 @@ class _Sidebar extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TabletRail extends StatelessWidget {
+  const _TabletRail({
+    required this.role,
+    required this.selectedView,
+    required this.onSelect,
+    required this.onChangeRole,
+  });
+
+  final StaffRole role;
+  final StaffView selectedView;
+  final ValueChanged<StaffView> onSelect;
+  final VoidCallback onChangeRole;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = menusForRole(role.name);
+    return ColoredBox(
+      color: _navy,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 16),
+            Container(
+              width: 46,
+              height: 46,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Color(0xFF3175EE),
+                borderRadius: BorderRadius.all(Radius.circular(13)),
+              ),
+              child: const Text(
+                'S',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 25,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
+                  final selected = selectedView == item.view;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Tooltip(
+                      message: item.label,
+                      child: Material(
+                        color: selected ? Colors.white : Colors.transparent,
+                        borderRadius: BorderRadius.circular(12),
+                        child: InkWell(
+                          key: Key('menu-${item.view.name}'),
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => onSelect(item.view),
+                          child: SizedBox(
+                            height: 64,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  item.icon,
+                                  size: 23,
+                                  color: selected
+                                      ? const Color(0xFF124B9E)
+                                      : const Color(0xFFD7E3F8),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  item.label,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: selected
+                                        ? const Color(0xFF124B9E)
+                                        : const Color(0xFFD7E3F8),
+                                    fontWeight: selected
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            IconButton(
+              onPressed: onChangeRole,
+              tooltip: '직책 바꾸기',
+              icon: const Icon(
+                Icons.manage_accounts_outlined,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
