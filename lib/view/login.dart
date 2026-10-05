@@ -60,7 +60,10 @@ class _LoginState extends State<Login> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
+                Wrap(
+                  spacing: 13,
+                  runSpacing: 12,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Container(
                       width: 52,
@@ -79,7 +82,6 @@ class _LoginState extends State<Login> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 13),
                     const Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [

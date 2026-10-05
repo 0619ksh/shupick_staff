@@ -128,7 +128,10 @@ void main() {
     await tester.tap(find.text('SHOEPICK 강남점').last);
     await tester.pumpAndSettle();
     expect(
-      find.textContaining('테스트 직원 · 대리점 직원 · SHOEPICK 강남점'),
+      find.descendant(
+        of: find.byKey(const Key('branch-selector')),
+        matching: find.text('SHOEPICK 강남점'),
+      ),
       findsOneWidget,
     );
 

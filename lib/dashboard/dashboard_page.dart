@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:shupick_staff/dashboard/staff_pages.dart';
 import 'package:shupick_staff/dashboard/staff_overview.dart';
 import 'package:shupick_staff/dashboard/staff_views.dart';
+import 'package:shupick_staff/dashboard/staff_order_api.dart';
+import 'package:shupick_staff/dashboard/staff_work_api.dart';
 
-const _navy = Color(0xFF102B58);
-const _blue = Color(0xFF1768E9);
-const _ink = Color(0xFF14243E);
-const _muted = Color(0xFF718098);
-const _line = Color(0xFFDCE5F0);
+const _navy = Color(0xFF19324F);
+const _blue = Color(0xFF2563C6);
+const _ink = Color(0xFF1B2B40);
+const _muted = Color(0xFF66768B);
+const _line = Color(0xFFE2E8F0);
+const _canvas = Color(0xFFF5F7FA);
 
 enum StaffRole {
   branchStaff('대리점 직원', '입고·픽업 결제 코드 확인·반품 현황', true),
@@ -44,6 +47,8 @@ class DashboardPage extends StatefulWidget {
     required this.availableBranches,
     required this.onSelectBranch,
     required this.onSignOut,
+    this.orderRepository,
+    this.workApi,
   });
 
   final StaffRole initialRole;
@@ -54,6 +59,8 @@ class DashboardPage extends StatefulWidget {
   final Map<int, String> availableBranches;
   final ValueChanged<int> onSelectBranch;
   final VoidCallback onSignOut;
+  final StaffOrderRepository? orderRepository;
+  final StaffWorkApi? workApi;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -91,164 +98,107 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 700;
-        final tabletPortrait =
-            constraints.maxWidth >= 700 && constraints.maxWidth < 1100;
-        return Scaffold(
-          drawer: compact
-              ? Drawer(
-                  width: 260,
-                  child: _Sidebar(
-                    role: role,
-                    employeeName: widget.employeeName,
-                    branch: widget.branch,
-                    selectedView: selectedView,
-                    inDrawer: true,
-                    onSelect: _selectView,
-                    onSignOut: widget.onSignOut,
-                  ),
-                )
-              : null,
-          body: SafeArea(
-            child: Row(
-              children: [
-                if (tabletPortrait)
-                  SizedBox(
-                    width: 88,
-                    child: _TabletRail(
-                      role: role,
-                      selectedView: selectedView,
-                      onSelect: _selectView,
-                      onSignOut: widget.onSignOut,
-                    ),
-                  ),
-                if (!compact && !tabletPortrait)
-                  SizedBox(
-                    width: 236,
-                    child: _Sidebar(
-                      role: role,
-                      employeeName: widget.employeeName,
-                      branch: widget.branch,
-                      selectedView: selectedView,
-                      onSelect: _selectView,
-                      onSignOut: widget.onSignOut,
-                    ),
-                  ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    controller: _contentScrollController,
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 1280),
-                        child: Padding(
-                          padding: EdgeInsets.fromLTRB(
-                            compact ? 16 : 24,
-                            compact ? 20 : 24,
-                            compact ? 16 : 24,
-                            44,
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _header(compact, constraints.maxWidth < 1100),
-                              const SizedBox(height: 24),
-                              if (selectedView == StaffView.overview)
-                                StaffOverview(
-                                  key: ValueKey(
-                                    '${role.name}-overview-${widget.selectedBranchId}',
-                                  ),
-                                  roleKey: role.name,
-                                  selectedBranchId: widget.selectedBranchId,
-                                  onOpenView: _selectView,
-                                )
-                              else
-                                StaffPage(
-                                  key: ValueKey(
-                                    '${role.name}-${selectedView.name}-${widget.selectedBranchId}',
-                                  ),
-                                  view: selectedView,
-                                  roleKey: role.name,
-                                  isBranch: role.isBranch,
-                                  selectedBranchId: widget.selectedBranchId,
-                                ),
-                            ],
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final mobile = constraints.maxWidth < 700;
+      final wide = constraints.maxWidth >= 1200;
+      final short = constraints.maxHeight < 500;
+      final navigation = _Sidebar(
+        role: role,
+        employeeName: widget.employeeName,
+        branch: widget.branch,
+        selectedView: selectedView,
+        onSelect: _selectView,
+        onSignOut: widget.onSignOut,
+        inDrawer: mobile,
+      );
+      return Scaffold(
+        backgroundColor: _canvas,
+        drawer: mobile ? Drawer(width: 280, child: navigation) : null,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _workspaceBar(mobile),
+              if (!mobile && !wide)
+                _TabletNavigation(
+                  role: role,
+                  selectedView: selectedView,
+                  onSelect: _selectView,
+                ),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (wide) SizedBox(width: 220, child: navigation),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        key: const Key('workspace-scroll'),
+                        controller: _contentScrollController,
+                        child: Align(
+                          alignment: Alignment.topCenter,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1440),
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                mobile ? 16 : 24,
+                                short ? 16 : 24,
+                                mobile ? 16 : 24,
+                                32,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  _pageHeading(mobile),
+                                  const SizedBox(height: 20),
+                                  if (selectedView == StaffView.overview)
+                                    StaffOverview(
+                                      key: ValueKey(
+                                        '${role.name}-overview-${widget.selectedBranchId}',
+                                      ),
+                                      roleKey: role.name,
+                                      selectedBranchId: widget.selectedBranchId,
+                                      orderRepository: widget.orderRepository,
+                                      workApi: widget.workApi,
+                                      onOpenView: _selectView,
+                                    )
+                                  else
+                                    StaffPage(
+                                      key: ValueKey(
+                                        '${role.name}-${selectedView.name}-${widget.selectedBranchId}',
+                                      ),
+                                      view: selectedView,
+                                      roleKey: role.name,
+                                      isBranch: role.isBranch,
+                                      selectedBranchId: widget.selectedBranchId,
+                                      orderRepository: widget.orderRepository,
+                                      workApi: widget.workApi,
+                                    ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
 
-  Widget _header(bool compact, bool stacked) {
-    final now = DateTime.now();
-    final date =
-        '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
-    final heading = viewTitle(
-      selectedView,
-      isBranch: role.isBranch,
-      role: role.name,
-    );
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (compact)
-          Builder(
-            builder: (context) => IconButton.filledTonal(
-              onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(Icons.menu),
-              tooltip: '업무 메뉴',
-            ),
-          ),
-        Text(
-          role.isBranch ? 'BRANCH OPERATIONS' : 'HEADQUARTERS',
-          style: const TextStyle(
-            color: _blue,
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            letterSpacing: 1.4,
-          ),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          heading,
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 32,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -1.2,
-          ),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          viewDescription(
-            selectedView,
-            isBranch: role.isBranch,
-            role: role.name,
-          ),
-          style: const TextStyle(color: _muted, fontSize: 14),
-        ),
-      ],
-    );
+  Widget _workspaceBar(bool compact) {
     final actions = Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        const _ChipLabel(label: '서버 업무 현황', highlighted: true),
-        _ChipLabel(label: date),
         PopupMenuButton<StaffRole>(
           key: const Key('role-selector'),
-          tooltip: '직책별 대시보드 보기',
+          tooltip: '직책 선택',
           onSelected: _selectRole,
           itemBuilder: (context) => widget.availableRoles
               .map(
@@ -256,7 +206,11 @@ class _DashboardPageState extends State<DashboardPage> {
                     PopupMenuItem(value: value, child: Text(value.label)),
               )
               .toList(),
-          child: _ChipLabel(label: '${role.label}  ▾', highlighted: true),
+          child: _ChipLabel(
+            label: role.label,
+            highlighted: true,
+            dropdown: true,
+          ),
         ),
         if (role.isBranch && widget.availableBranches.isNotEmpty)
           widget.availableBranches.length == 1
@@ -273,24 +227,119 @@ class _DashboardPageState extends State<DashboardPage> {
                         ),
                       )
                       .toList(),
-                  child: _ChipLabel(label: '${widget.branch}  ▾'),
+                  child: _ChipLabel(label: widget.branch, dropdown: true),
                 ),
-        OutlinedButton(onPressed: widget.onSignOut, child: const Text('로그아웃')),
+        IconButton.outlined(
+          onPressed: widget.onSignOut,
+          tooltip: '로그아웃',
+          icon: const Icon(Icons.logout_rounded, size: 19),
+        ),
       ],
     );
-    if (stacked) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [title, const SizedBox(height: 16), actions],
-      );
-    }
-    return Row(
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: _line)),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 18 : 32,
+          vertical: 14,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 900;
+            final identity = Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (compact) ...[
+                  Builder(
+                    builder: (context) => IconButton(
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                      icon: const Icon(Icons.menu),
+                      tooltip: '업무 메뉴',
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                const Icon(Icons.grid_view_rounded, size: 20, color: _blue),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    '${widget.employeeName}님의 업무 공간',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _ink,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            );
+            if (stacked) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [identity, const SizedBox(height: 10), actions],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: identity),
+                const SizedBox(width: 12),
+                Flexible(
+                  flex: 2,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: actions,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _pageHeading(bool compact) {
+    final now = DateTime.now();
+    final date =
+        '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
+    final heading = selectedView == StaffView.overview && role.isBranch
+        ? (role == StaffRole.branchManager ? '지점 운영 대시보드' : '대리점 업무 대시보드')
+        : viewTitle(selectedView, isBranch: role.isBranch, role: role.name);
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(child: title),
-        const SizedBox(width: 12),
-        Flexible(
-          child: Align(alignment: Alignment.topRight, child: actions),
+        Text(
+          '${role.isBranch ? widget.branch : '본사'}  /  $date',
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          heading,
+          style: TextStyle(
+            color: _ink,
+            fontSize: compact ? 27 : 32,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.8,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          viewDescription(
+            selectedView,
+            isBranch: role.isBranch,
+            role: role.name,
+          ),
+          style: const TextStyle(color: _muted, fontSize: 14, height: 1.45),
         ),
       ],
     );
@@ -307,6 +356,7 @@ class _Sidebar extends StatelessWidget {
     required this.onSignOut,
     this.inDrawer = false,
   });
+
   final StaffRole role;
   final String employeeName;
   final String branch;
@@ -316,307 +366,180 @@ class _Sidebar extends StatelessWidget {
   final bool inDrawer;
 
   @override
-  Widget build(BuildContext context) {
-    final items = menusForRole(role.name);
-    return ColoredBox(
-      color: _navy,
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 28, 14, 20),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF3175EE),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Text(
-                      'S',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 23,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'SHOEPICK',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: .5,
-                        ),
-                      ),
-                      Text(
-                        'STAFF TABLET',
-                        style: TextStyle(
-                          color: Color(0xFFA9C0E5),
-                          fontSize: 10,
-                          letterSpacing: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1C3C70),
-                  border: Border.all(color: const Color(0xFF315182)),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '현재 접속',
-                      style: TextStyle(color: Color(0xFFA9C0E5), fontSize: 11),
-                    ),
-                    const SizedBox(height: 5),
-                    Text(
-                      '$employeeName · ${role.label}${role.isBranch ? ' · $branch' : ''}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 28),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Padding(
-                  padding: EdgeInsets.only(left: 12, bottom: 8),
-                  child: Text(
-                    '업무 메뉴',
-                    style: TextStyle(
-                      color: Color(0xFF8FAAD2),
-                      fontSize: 11,
-                      letterSpacing: 1.5,
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 4),
-                  itemBuilder: (context, index) {
-                    final item = items[index];
-                    final selected = item.view == selectedView;
-                    return InkWell(
-                      key: Key('menu-${item.view.name}'),
-                      onTap: () {
-                        onSelect(item.view);
-                        if (inDrawer) Navigator.of(context).pop();
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Container(
-                        height: 54,
-                        padding: const EdgeInsets.symmetric(horizontal: 13),
-                        decoration: BoxDecoration(
-                          color: selected ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              item.icon,
-                              size: 19,
-                              color: selected
-                                  ? const Color(0xFF124B9E)
-                                  : const Color(0xFFD7E3F8),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                item.label,
-                                style: TextStyle(
-                                  color: selected
-                                      ? const Color(0xFF124B9E)
-                                      : const Color(0xFFD7E3F8),
-                                  fontSize: 13,
-                                  fontWeight: selected
-                                      ? FontWeight.w800
-                                      : FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              OutlinedButton(
-                onPressed: onSignOut,
-                style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-                child: const Text('로그아웃'),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                '업무 화면은 시연 데이터입니다.\n처리 기능은 차례로 연결됩니다.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Color(0xFF9CB3D6),
-                  fontSize: 11,
-                  height: 1.5,
-                ),
-              ),
-            ],
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      border: Border(right: BorderSide(color: _line)),
+    ),
+    child: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Text(
+          'SHOEPICK',
+          style: TextStyle(
+            color: _navy,
+            fontSize: 21,
+            fontWeight: FontWeight.w900,
           ),
         ),
-      ),
-    );
-  }
+        const SizedBox(height: 6),
+        Text(
+          '$employeeName · ${role.label}',
+          style: const TextStyle(color: _muted, fontSize: 12),
+        ),
+        const Divider(height: 32),
+        for (final menu in menusForRole(role.name))
+          Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: _NavigationItem(
+              menu: menu,
+              selected: menu.view == selectedView,
+              onTap: () {
+                onSelect(menu.view);
+                if (inDrawer) Navigator.of(context).pop();
+              },
+            ),
+          ),
+        const Divider(height: 32),
+        TextButton.icon(
+          onPressed: onSignOut,
+          icon: const Icon(Icons.logout_rounded, size: 18),
+          label: const Text('로그아웃'),
+        ),
+      ],
+    ),
+  );
 }
 
-class _TabletRail extends StatelessWidget {
-  const _TabletRail({
+class _TabletNavigation extends StatelessWidget {
+  const _TabletNavigation({
     required this.role,
     required this.selectedView,
     required this.onSelect,
-    required this.onSignOut,
   });
-
   final StaffRole role;
   final StaffView selectedView;
   final ValueChanged<StaffView> onSelect;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = menusForRole(role.name);
-    return ColoredBox(
-      color: _navy,
-      child: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 16),
-            Container(
-              width: 46,
-              height: 46,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: Color(0xFF3175EE),
-                borderRadius: BorderRadius.all(Radius.circular(13)),
-              ),
-              child: const Text(
-                'S',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 25,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-                  final selected = selectedView == item.view;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Tooltip(
-                      message: item.label,
-                      child: Material(
-                        color: selected ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          key: Key('menu-${item.view.name}'),
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => onSelect(item.view),
-                          child: SizedBox(
-                            height: 64,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  item.icon,
-                                  size: 23,
-                                  color: selected
-                                      ? const Color(0xFF124B9E)
-                                      : const Color(0xFFD7E3F8),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  item.label,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: selected
-                                        ? const Color(0xFF124B9E)
-                                        : const Color(0xFFD7E3F8),
-                                    fontWeight: selected
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-            IconButton(
-              onPressed: onSignOut,
-              tooltip: '로그아웃',
-              icon: const Icon(
-                Icons.manage_accounts_outlined,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ChipLabel extends StatelessWidget {
-  const _ChipLabel({required this.label, this.highlighted = false});
-  final String label;
-  final bool highlighted;
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-    decoration: BoxDecoration(
-      color: highlighted ? const Color(0xFFE8F1FF) : Colors.white,
-      border: Border.all(color: highlighted ? const Color(0xFFD5E6FF) : _line),
-      borderRadius: BorderRadius.circular(10),
+    width: double.infinity,
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      border: Border(bottom: BorderSide(color: _line)),
     ),
-    child: Text(
-      label,
-      style: TextStyle(
-        color: highlighted ? const Color(0xFF174A99) : const Color(0xFF52637E),
-        fontSize: 12,
-        fontWeight: highlighted ? FontWeight.w700 : FontWeight.w500,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          for (final menu in menusForRole(role.name))
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: _NavigationItem(
+                menu: menu,
+                selected: menu.view == selectedView,
+                onTap: () => onSelect(menu.view),
+                horizontal: true,
+              ),
+            ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _NavigationItem extends StatelessWidget {
+  const _NavigationItem({
+    required this.menu,
+    required this.selected,
+    required this.onTap,
+    this.horizontal = false,
+  });
+
+  final StaffMenu menu;
+  final bool selected;
+  final VoidCallback onTap;
+  final bool horizontal;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: selected ? const Color(0xFFEAF2FF) : Colors.transparent,
+    borderRadius: BorderRadius.circular(10),
+    child: InkWell(
+      key: Key('menu-${menu.view.name}'),
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          mainAxisSize: horizontal ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            Icon(menu.icon, size: 20, color: selected ? _blue : _muted),
+            const SizedBox(width: 10),
+            if (horizontal)
+              Text(menu.label, style: _labelStyle)
+            else
+              Expanded(child: Text(menu.label, style: _labelStyle)),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  TextStyle get _labelStyle => TextStyle(
+    color: selected ? _blue : _ink,
+    fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+    fontSize: 13,
+  );
+}
+
+class _ChipLabel extends StatelessWidget {
+  const _ChipLabel({
+    required this.label,
+    this.highlighted = false,
+    this.dropdown = false,
+  });
+  final String label;
+  final bool highlighted;
+  final bool dropdown;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 260),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: highlighted ? const Color(0xFFEAF2FF) : Colors.white,
+        border: Border.all(
+          color: highlighted ? const Color(0xFFC7DAF6) : _line,
+        ),
+        borderRadius: BorderRadius.circular(9),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: highlighted ? _blue : _muted,
+                fontSize: 12,
+                fontWeight: highlighted ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+          if (dropdown) ...[
+            const SizedBox(width: 6),
+            Icon(
+              Icons.expand_more,
+              size: 16,
+              color: highlighted ? _blue : _muted,
+            ),
+          ],
+        ],
       ),
     ),
   );

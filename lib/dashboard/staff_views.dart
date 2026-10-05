@@ -5,7 +5,6 @@ enum StaffView {
   inbound,
   pickup,
   returns,
-  exchanges,
   inventory,
   stockLookup,
   communication,
@@ -76,7 +75,6 @@ String viewTitle(
   StaffView.inbound => '입고 관리',
   StaffView.pickup => '고객 상품 수령',
   StaffView.returns => isBranch ? '반품 현황' : '반품 검수',
-  StaffView.exchanges => isBranch ? '교환 관리' : '교환품 배송',
   StaffView.inventory => isBranch ? '날짜별 재고 현황' : '제품별 재고 현황',
   StaffView.stockLookup => '현재 재고 조회',
   StaffView.communication => '업무 소통',
@@ -105,10 +103,6 @@ String viewDescription(
   StaffView.pickup => '고객의 픽업 결제 코드를 확인하고 실물 상품을 인도하세요.',
   StaffView.returns =>
     isBranch ? '소속 지점의 반품 요청과 처리 상태를 조회하세요.' : '반품 상품을 검수하고 승인 또는 반려하세요.',
-  StaffView.exchanges =>
-    isBranch
-        ? '기존 상품을 회수하고 교환품의 입고·픽업 결제 코드 확인·인도를 처리하세요.'
-        : '교환 요청을 확인하고 선택한 대리점으로 상품을 발송하세요.',
   StaffView.inventory =>
     isBranch ? '선택한 날짜의 지점 재고와 입출고 현황입니다.' : '목표 재고 대비 보유량을 확인하세요.',
   StaffView.stockLookup => '현장 처리에 필요한 현재 재고를 조회하세요.',

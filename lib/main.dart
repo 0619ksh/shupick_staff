@@ -105,9 +105,9 @@ class _MyAppState extends State<MyApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFEDF2F8),
+        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF1768E9),
+          seedColor: const Color(0xFF2563C6),
           surface: Colors.white,
         ),
         filledButtonTheme: FilledButtonThemeData(

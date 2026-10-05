@@ -4,10 +4,10 @@ import 'package:shupick_staff/dashboard/staff_order_api.dart';
 import 'package:shupick_staff/dashboard/staff_views.dart';
 import 'package:shupick_staff/dashboard/staff_work_api.dart';
 
-const _blue = Color(0xFF1768E9);
-const _ink = Color(0xFF14243E);
-const _muted = Color(0xFF718098);
-const _line = Color(0xFFDCE5F0);
+const _blue = Color(0xFF2563C6);
+const _ink = Color(0xFF1B2B40);
+const _muted = Color(0xFF66768B);
+const _line = Color(0xFFE2E8F0);
 const _red = Color(0xFFCF3948);
 
 class OverviewMetric {
@@ -27,17 +27,18 @@ class OverviewAlert {
 }
 
 class OverviewSnapshot {
-  const OverviewSnapshot(this.metrics, this.alerts);
+  const OverviewSnapshot(this.metrics, this.alerts, {this.warnings = const []});
 
   final List<OverviewMetric> metrics;
   final List<OverviewAlert> alerts;
+  final List<String> warnings;
 }
 
 int _count<T>(Iterable<T> values, bool Function(T) matches) =>
     values.where(matches).length;
 
 List<Map<String, dynamic>> _inventoryRows(Map<String, dynamic> inventory) =>
-    (inventory['rows'] as List<dynamic>).cast<Map<String, dynamic>>();
+    (inventory['rows'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
 
 List<Map<String, dynamic>> _lowStock(Map<String, dynamic> inventory) =>
     _inventoryRows(inventory).where((row) {
@@ -65,9 +66,10 @@ OverviewSnapshot branchOverview(
     returns,
     (row) => row['status'] == 'REQUESTED',
   );
-  final held = _inventoryRows(
-    inventory,
-  ).fold<int>(0, (total, row) => total + (row['quantity'] as num).toInt());
+  final held = _inventoryRows(inventory).fold<int>(
+    0,
+    (total, row) => total + (num.tryParse('${row['quantity']}') ?? 0).toInt(),
+  );
   return OverviewSnapshot(
     [
       OverviewMetric('입고 확인 대기', '$arriving건', '최근 주문 100건 기준'),
@@ -275,15 +277,41 @@ class _StaffOverviewState extends State<StaffOverview> {
       if (branchId == null) {
         throw const StaffAuthException('조회할 소속 지점이 없습니다.');
       }
+      final warnings = <String>[];
+      Future<T?> load<T>(String label, Future<T> Function() fetch) async {
+        try {
+          return await fetch();
+        } on StaffAuthException catch (error) {
+          warnings.add('$label: ${error.message}');
+        } catch (_) {
+          warnings.add('$label: 조회 결과를 처리하지 못했습니다.');
+        }
+        return null;
+      }
+
       final results = await Future.wait<dynamic>([
-        _orders.listOrders(branchId: branchId),
-        _work.returns(branchId: branchId),
-        _work.inventory(branchId: branchId),
+        load('주문', () => _orders.listOrders(branchId: branchId)),
+        load('반품', () => _work.returns(branchId: branchId)),
+        load('보관 재고', () => _work.inventory(branchId: branchId)),
       ]);
-      return branchOverview(
-        results[0] as List<StaffOrder>,
-        results[1] as List<Map<String, dynamic>>,
-        results[2] as Map<String, dynamic>,
+      final summary = branchOverview(
+        results[0] as List<StaffOrder>? ?? [],
+        results[1] as List<Map<String, dynamic>>? ?? [],
+        results[2] as Map<String, dynamic>? ?? {'rows': []},
+      );
+      return OverviewSnapshot(
+        [
+          for (var index = 0; index < summary.metrics.length; index++)
+            results[index < 2 ? 0 : index - 1] == null
+                ? OverviewMetric(
+                    summary.metrics[index].label,
+                    '—',
+                    '조회 실패 · 새로고침 필요',
+                  )
+                : summary.metrics[index],
+        ],
+        summary.alerts,
+        warnings: warnings,
       );
     }
     if (widget.roleKey == 'hqStaff') {
@@ -352,7 +380,21 @@ class _StaffOverviewState extends State<StaffOverview> {
 
   @override
   Widget build(BuildContext context) {
-    final snapshot = _snapshot;
+    final branch =
+        widget.roleKey == 'branchStaff' || widget.roleKey == 'branchManager';
+    final snapshot =
+        _snapshot ??
+        (branch
+            ? OverviewSnapshot([
+                for (final label in [
+                  '입고 확인 대기',
+                  '고객 수령 대기',
+                  '반품 요청',
+                  '현재 보관 수량',
+                ])
+                  OverviewMetric(label, '—', _loading ? '조회 중' : '조회할 수 없음'),
+              ], const [])
+            : null);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -383,6 +425,21 @@ class _StaffOverviewState extends State<StaffOverview> {
             child: Text(_error!, style: const TextStyle(color: _red)),
           ),
         if (snapshot != null) ...[
+          if (snapshot.warnings.isNotEmpty) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF5E5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                snapshot.warnings.join('\n'),
+                style: const TextStyle(color: _red),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 900
@@ -406,14 +463,38 @@ class _StaffOverviewState extends State<StaffOverview> {
               );
             },
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 20),
+          Text(
+            '빠른 업무',
+            style: const TextStyle(
+              color: _ink,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final menu in menusForRole(
+                widget.roleKey,
+              ).where((menu) => menu.view != StaffView.overview))
+                OutlinedButton.icon(
+                  onPressed: () => widget.onOpenView(menu.view),
+                  icon: Icon(menu.icon, size: 18),
+                  label: Text(menu.label),
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border.all(color: _line),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,9 +509,11 @@ class _StaffOverviewState extends State<StaffOverview> {
                 ),
                 const SizedBox(height: 12),
                 if (snapshot.alerts.isEmpty)
-                  const Text(
-                    '현재 확인할 업무 알림이 없습니다.',
-                    style: TextStyle(color: _muted),
+                  Text(
+                    _loading || _error != null || snapshot.warnings.isNotEmpty
+                        ? '조회가 완료된 데이터의 업무 알림이 표시됩니다.'
+                        : '현재 확인할 업무 알림이 없습니다.',
+                    style: const TextStyle(color: _muted),
                   ),
                 for (final alert in snapshot.alerts)
                   Padding(
@@ -465,39 +548,30 @@ class _OverviewCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    height: 118,
-    padding: const EdgeInsets.all(17),
+    constraints: const BoxConstraints(minHeight: 120),
+    padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: Colors.white,
       border: Border.all(color: _line),
-      borderRadius: BorderRadius.circular(15),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0924436F),
-          blurRadius: 16,
-          offset: Offset(0, 5),
-        ),
-      ],
+      borderRadius: BorderRadius.circular(12),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(metric.label, style: const TextStyle(color: _muted, fontSize: 12)),
+        const SizedBox(height: 12),
         Text(
           metric.value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             color: _ink,
             fontSize: 28,
             fontWeight: FontWeight.w800,
           ),
         ),
+        const SizedBox(height: 8),
         Text(
           metric.caption,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
           style: const TextStyle(color: _muted, fontSize: 11),
         ),
       ],

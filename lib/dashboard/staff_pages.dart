@@ -4,10 +4,10 @@ import 'package:shupick_staff/dashboard/staff_order_api.dart';
 import 'package:shupick_staff/dashboard/staff_work_api.dart';
 import 'package:shupick_staff/auth/staff_session.dart';
 
-const _blue = Color(0xFF1768E9);
-const _ink = Color(0xFF14243E);
-const _muted = Color(0xFF718098);
-const _line = Color(0xFFDCE5F0);
+const _blue = Color(0xFF2563C6);
+const _ink = Color(0xFF1B2B40);
+const _muted = Color(0xFF66768B);
+const _line = Color(0xFFE2E8F0);
 const _red = Color(0xFFCF3948);
 const _green = Color(0xFF126D66);
 
@@ -523,7 +523,6 @@ class _StaffPageState extends State<StaffPage> {
     StaffView.inbound => _inbound(),
     StaffView.pickup => _pickup(),
     StaffView.returns => _returns(),
-    StaffView.exchanges => _unavailable('교환 업무'),
     StaffView.inventory =>
       widget.isBranch ? _branchInventory() : _hqInventory(),
     StaffView.stockLookup => _stockLookup(),
@@ -741,12 +740,14 @@ class _StaffPageState extends State<StaffPage> {
     _panel(
       '조회 날짜',
       '해당 날짜 마감 시점의 지점 보관 수량입니다.',
-      Row(
+      Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
             '${inventoryDate.year}-${inventoryDate.month.toString().padLeft(2, '0')}-${inventoryDate.day.toString().padLeft(2, '0')}',
           ),
-          const SizedBox(width: 12),
           _action(
             '날짜 선택',
             onPressed: () async {
@@ -1345,18 +1346,11 @@ class _StaffPageState extends State<StaffPage> {
 
   Widget _panel(String title, String subtitle, Widget child) => Container(
     width: double.infinity,
-    padding: const EdgeInsets.all(20),
+    padding: const EdgeInsets.all(22),
     decoration: BoxDecoration(
       color: Colors.white,
       border: Border.all(color: _line),
-      borderRadius: BorderRadius.circular(15),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0924436F),
-          blurRadius: 16,
-          offset: Offset(0, 5),
-        ),
-      ],
+      borderRadius: BorderRadius.circular(12),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1395,16 +1389,16 @@ class _StaffPageState extends State<StaffPage> {
             SizedBox(
               width: cardWidth,
               child: Container(
-                height: 125,
+                constraints: const BoxConstraints(minHeight: 120),
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(color: _line),
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       label,
@@ -1416,6 +1410,7 @@ class _StaffPageState extends State<StaffPage> {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                    const SizedBox(height: 12),
                     Text(
                       value,
                       maxLines: 1,
@@ -1426,10 +1421,9 @@ class _StaffPageState extends State<StaffPage> {
                         fontWeight: FontWeight.w800,
                       ),
                     ),
+                    const SizedBox(height: 8),
                     Text(
                       caption,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: _muted, fontSize: 11),
                     ),
                   ],
@@ -1852,44 +1846,64 @@ class _MiniChart extends StatelessWidget {
     final maximum = days
         .map((row) => (row['quantity'] as num).toDouble())
         .reduce((a, b) => a > b ? a : b);
-    return SizedBox(
-      height: 170,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < days.length; i++)
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 3),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    Container(
-                      height: maximum == 0
-                          ? 2
-                          : 135 *
-                                ((days[i]['quantity'] as num).toDouble() /
-                                    maximum),
-                      decoration: BoxDecoration(
-                        color: i == days.length - 1
-                            ? _blue
-                            : const Color(0xFF8BB6F3),
-                        borderRadius: const BorderRadius.vertical(
-                          top: Radius.circular(5),
-                        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minimumWidth = days.length * 44.0;
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: SizedBox(
+            width: constraints.maxWidth < minimumWidth
+                ? minimumWidth
+                : constraints.maxWidth,
+            height: 190,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < days.length; i++)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 3),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Container(
+                                width: double.infinity,
+                                height: maximum == 0
+                                    ? 2
+                                    : 135 *
+                                          ((days[i]['quantity'] as num)
+                                                  .toDouble() /
+                                              maximum),
+                                decoration: BoxDecoration(
+                                  color: i == days.length - 1
+                                      ? _blue
+                                      : const Color(0xFF8BB6F3),
+                                  borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(
+                            (days[i]['day'] as String).substring(5),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: _muted, fontSize: 9),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 7),
-                    Text(
-                      i.isEven ? (days[i]['day'] as String).substring(5) : '',
-                      style: const TextStyle(color: _muted, fontSize: 9),
-                    ),
-                  ],
-                ),
-              ),
+                  ),
+              ],
             ),
-        ],
-      ),
+          ),
+        );
+      },
     );
   }
 }
