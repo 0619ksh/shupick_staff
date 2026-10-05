@@ -130,6 +130,7 @@ class _MyAppState extends State<MyApp> {
               availableRoles: allowedRoles,
               employeeName: staff.name,
               branch: branch?.name ?? '본사',
+              selectedBranchId: selectedBranchId,
               availableBranches: {
                 for (final item in branches) item.id: item.name,
               },

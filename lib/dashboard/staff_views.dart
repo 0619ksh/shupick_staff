@@ -31,15 +31,11 @@ List<StaffMenu> menusForRole(String role) => switch (role) {
     StaffMenu(StaffView.inbound, '입고', Icons.inventory_2_outlined),
     StaffMenu(StaffView.pickup, '픽업 코드 확인', Icons.pin_outlined),
     StaffMenu(StaffView.returns, '반품', Icons.assignment_return_outlined),
-    StaffMenu(StaffView.exchanges, '교환', Icons.sync_alt),
     StaffMenu(StaffView.stockLookup, '현재 재고', Icons.warehouse_outlined),
-    StaffMenu(StaffView.communication, '업무 소통', Icons.chat_bubble_outline),
   ],
   'branchManager' => const [
     StaffMenu(StaffView.overview, '대시보드', Icons.dashboard_outlined),
     StaffMenu(StaffView.inventory, '날짜별 재고', Icons.warehouse_outlined),
-    StaffMenu(StaffView.exchanges, '교환 현황', Icons.sync_alt),
-    StaffMenu(StaffView.communication, '업무 소통', Icons.chat_bubble_outline),
     StaffMenu(StaffView.inbound, '입고', Icons.inventory_2_outlined),
     StaffMenu(StaffView.pickup, '픽업 코드 확인', Icons.pin_outlined),
     StaffMenu(StaffView.returns, '반품', Icons.assignment_return_outlined),
@@ -48,17 +44,14 @@ List<StaffMenu> menusForRole(String role) => switch (role) {
     StaffMenu(StaffView.overview, '대시보드', Icons.dashboard_outlined),
     StaffMenu(StaffView.orders, '주문', Icons.receipt_long_outlined),
     StaffMenu(StaffView.customers, '고객 관리', Icons.people_outline),
+    StaffMenu(StaffView.returns, '반품 검수', Icons.assignment_return_outlined),
     StaffMenu(StaffView.shipping, '배송', Icons.local_shipping_outlined),
-    StaffMenu(StaffView.exchanges, '교환 배송', Icons.sync_alt),
     StaffMenu(StaffView.inventory, '재고', Icons.warehouse_outlined),
     StaffMenu(StaffView.requests, '품의 작성', Icons.edit_note_outlined),
-    StaffMenu(StaffView.communication, '업무 소통', Icons.chat_bubble_outline),
   ],
   'teamLeader' => const [
     StaffMenu(StaffView.overview, '대시보드', Icons.dashboard_outlined),
     StaffMenu(StaffView.approvals, '결재함', Icons.fact_check_outlined),
-    StaffMenu(StaffView.customers, '고객 관리', Icons.people_outline),
-    StaffMenu(StaffView.communication, '업무 소통', Icons.chat_bubble_outline),
     StaffMenu(StaffView.inventory, '재고', Icons.warehouse_outlined),
   ],
   'director' => const [
@@ -82,7 +75,7 @@ String viewTitle(
   StaffView.overview => role == 'executive' ? '판매·재고 현황' : '대시보드',
   StaffView.inbound => '입고 관리',
   StaffView.pickup => '고객 상품 수령',
-  StaffView.returns => '반품 접수',
+  StaffView.returns => isBranch ? '반품 현황' : '반품 검수',
   StaffView.exchanges => isBranch ? '교환 관리' : '교환품 배송',
   StaffView.inventory => isBranch ? '날짜별 재고 현황' : '제품별 재고 현황',
   StaffView.stockLookup => '현재 재고 조회',
@@ -101,16 +94,17 @@ String viewDescription(
   required String role,
 }) => switch (view) {
   StaffView.overview => switch (role) {
-    'branchStaff' => '입고·픽업 결제 코드 확인·반품·교환 처리',
-    'branchManager' => '지점 재고와 운영·본사 소통',
+    'branchStaff' => '입고·픽업 결제 코드 확인·반품 현황',
+    'branchManager' => '지점 재고와 입고·픽업 업무',
     'hqStaff' => '주문·고객 문의·배송·구매 품의',
-    'teamLeader' => '구매 품의·고객 혜택 결재·지점 이슈 조정',
+    'teamLeader' => '구매 품의 결재와 재고 조회',
     'director' => '구매 품의 최종 결재',
     _ => '판매·재고·발주 분석',
   },
   StaffView.inbound => '도착한 상품을 확인하고 지점 입고를 처리하세요.',
   StaffView.pickup => '고객의 픽업 결제 코드를 확인하고 실물 상품을 인도하세요.',
-  StaffView.returns => '인도된 주문을 조회해 반품을 접수하세요.',
+  StaffView.returns =>
+    isBranch ? '소속 지점의 반품 요청과 처리 상태를 조회하세요.' : '반품 상품을 검수하고 승인 또는 반려하세요.',
   StaffView.exchanges =>
     isBranch
         ? '기존 상품을 회수하고 교환품의 입고·픽업 결제 코드 확인·인도를 처리하세요.'

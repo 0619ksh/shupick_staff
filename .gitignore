@@ -407,5 +407,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Android Firebase app configuration is needed by the Google Services Gradle plugin.
-!android/app/google-services.json
+# Each developer generates these files for the shared Firebase project locally.
+/lib/firebase_options.dart
+/android/app/google-services.json
+/ios/Runner/GoogleService-Info.plist

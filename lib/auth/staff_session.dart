@@ -91,7 +91,7 @@ class FirebaseStaffAuthRepository implements StaffAuthRepository {
 
   final http.Client _client;
 
-  static String get _apiBaseUrl {
+  static String get apiBaseUrl {
     const override = String.fromEnvironment('API_BASE_URL');
     if (override.isNotEmpty) return override.replaceFirst(RegExp(r'/$'), '');
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
@@ -100,7 +100,7 @@ class FirebaseStaffAuthRepository implements StaffAuthRepository {
     return 'http://127.0.0.1:8000';
   }
 
-  Future<void> _initializeFirebase() async {
+  static Future<void> initializeFirebase() async {
     if (Firebase.apps.isNotEmpty) return;
     try {
       await Firebase.initializeApp(
@@ -116,7 +116,7 @@ class FirebaseStaffAuthRepository implements StaffAuthRepository {
   Future<StaffProfile> _fetchProfile(User user) async {
     Future<http.Response> request(String token) => _client
         .get(
-          Uri.parse('$_apiBaseUrl/auth/employee/me'),
+          Uri.parse('$apiBaseUrl/auth/employee/me'),
           headers: {'Authorization': 'Bearer $token'},
         )
         .timeout(const Duration(seconds: 12));
@@ -146,7 +146,7 @@ class FirebaseStaffAuthRepository implements StaffAuthRepository {
 
   @override
   Future<StaffProfile?> restoreSession() async {
-    await _initializeFirebase();
+    await initializeFirebase();
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return null;
     try {
@@ -161,7 +161,7 @@ class FirebaseStaffAuthRepository implements StaffAuthRepository {
 
   @override
   Future<StaffProfile> signIn(String email, String password) async {
-    await _initializeFirebase();
+    await initializeFirebase();
     try {
       final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,

@@ -115,7 +115,7 @@ void main() {
     await tester.tap(find.byKey(const Key('staff-sign-in')));
     await tester.pumpAndSettle();
     expect(find.textContaining('테스트 직원 · 대리점 직원'), findsOneWidget);
-    expect(find.text('오늘 입고 예정'), findsOneWidget);
+    expect(find.text('업무 현황'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('role-selector')));
     await tester.pumpAndSettle();
@@ -195,26 +195,25 @@ void main() {
 
     await open('inbound', '입고 대상 주문');
     await open('pickup', '픽업 결제 코드 확인');
-    await open('returns', '반품 대상 조회');
-    await open('exchanges', '교환 요청 접수');
-    await open('stockLookup', '현재 지점 재고');
-    await open('communication', '새 대화');
+    await open('returns', '반품 진행 현황');
+    await open('stockLookup', '현재 지점 보관 상품');
+    expect(find.byKey(const Key('menu-exchanges')), findsNothing);
+    expect(find.byKey(const Key('menu-communication')), findsNothing);
 
     await chooseRole('대리점장');
-    await open('inventory', '제품별 재고');
+    await open('inventory', '현재 지점 보관 상품');
 
     await chooseRole('본사 사원');
     await open('orders', '주문 조회');
     await open('customers', '고객 목록');
     await open('shipping', '주문별 배송 단계');
-    await open('exchanges', '교환품 발송 대기');
+    await open('returns', '본사 반품 검수');
     await open('inventory', '제품별 본사 재고');
     await open('requests', '제조사 구매 품의 작성');
-    await open('communication', '새 대화');
 
     await chooseRole('본사 팀장');
     await open('approvals', '1차 결재 대기');
-    await open('customers', '혜택 승인 요청');
+    expect(find.byKey(const Key('menu-customers')), findsNothing);
 
     await chooseRole('본사 이사');
     await open('approvals', '최종 결재 대기');
