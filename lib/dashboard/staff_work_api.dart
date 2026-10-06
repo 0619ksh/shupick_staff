@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:shupick_staff/auth/staff_session.dart';
+import 'package:shupick_staff/dashboard/staff_analytics_data.dart';
 
 class StaffWorkApi {
   StaffWorkApi({http.Client? client}) : _client = client ?? http.Client();
@@ -37,6 +38,15 @@ class StaffWorkApi {
                       body: jsonEncode(body ?? {}),
                     ))
               .timeout(const Duration(seconds: 12));
+      if (response.statusCode >= 400 &&
+          (path.startsWith('/staff/returns/') ||
+              path.startsWith('/staff/orders/'))) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        final detail = decoded is Map ? decoded['detail'] : null;
+        if (detail is String && detail.isNotEmpty) {
+          throw StaffAuthException(detail);
+        }
+      }
       if (response.statusCode == 401) {
         throw const StaffAuthException('로그인이 만료되었습니다. 다시 로그인해주세요.');
       }
@@ -85,14 +95,12 @@ class StaffWorkApi {
           .cast<Map<String, dynamic>>();
 
   Future<Map<String, dynamic>> createRequisition({
-    required int branchId,
     required int productVariantId,
     required int quantity,
     required String title,
     required String reason,
   }) async =>
       (await _request('POST', '/procurement/requisitions', {
-            'branchId': branchId,
             'title': title,
             'reason': reason,
             'items': [
@@ -142,6 +150,41 @@ class StaffWorkApi {
     await _request('POST', '/returns/$id/inspection', details);
   }
 
+  Future<Map<String, dynamic>> returnRefund(int id) async =>
+      await _request('GET', '/staff/returns/$id/refund')
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> processTestReturnRefund(
+    int id,
+    int amount,
+  ) async =>
+      await _request('POST', '/staff/returns/$id/refund/test', {
+            'confirmTest': true,
+            'expectedRefundAmount': amount,
+          })
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> lookupReturnOrder(
+    int branchId,
+    String orderNumber,
+  ) async {
+    final query = Uri(
+      queryParameters: {
+        'branchId': '$branchId',
+        'orderNumber': orderNumber.trim().toUpperCase(),
+      },
+    ).query;
+    return await _request('GET', '/staff/returns/order?$query')
+        as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> registerReturn(
+    int orderId,
+    Map<String, dynamic> details,
+  ) async =>
+      await _request('POST', '/staff/orders/$orderId/returns', details)
+          as Map<String, dynamic>;
+
   Future<Map<String, dynamic>> analytics({
     required int days,
     int? branchId,
@@ -154,8 +197,10 @@ class StaffWorkApi {
         if (productId != null) 'productId': '$productId',
       },
     ).query;
-    return (await _request('GET', '/staff/analytics?$query'))
-        as Map<String, dynamic>;
+    return normalizeStaffAnalytics(
+      (await _request('GET', '/staff/analytics?$query'))
+          as Map<String, dynamic>,
+    );
   }
 
   Future<void> answerInquiry(int id, String answer) async {

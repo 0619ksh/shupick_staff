@@ -3,6 +3,9 @@ import 'package:shupick_staff/dashboard/staff_views.dart';
 import 'package:shupick_staff/dashboard/staff_order_api.dart';
 import 'package:shupick_staff/dashboard/staff_work_api.dart';
 import 'package:shupick_staff/auth/staff_session.dart';
+import 'package:shupick_staff/dashboard/branch_return_registration.dart';
+import 'package:shupick_staff/dashboard/return_refund_panel.dart';
+import 'package:shupick_staff/dashboard/staff_analytics_data.dart';
 
 const _blue = Color(0xFF2563C6);
 const _ink = Color(0xFF1B2B40);
@@ -45,6 +48,8 @@ class _StaffPageState extends State<StaffPage> {
   List<Map<String, dynamic>> requisitionData = [];
   List<Map<String, dynamic>> inquiryData = [];
   List<Map<String, dynamic>> customerData = [];
+  String customerSort = '최근 주문순';
+  bool customerDetailLoading = false;
   List<Map<String, dynamic>> returnData = [];
   int? selectedReturnId;
   final returnNotesController = TextEditingController();
@@ -57,11 +62,9 @@ class _StaffPageState extends State<StaffPage> {
   bool returnWrongItem = false;
   Map<String, dynamic>? customerDetail;
   int? selectedCustomerId;
-  List<Map<String, dynamic>> branchOptions = [];
   bool workLoading = false;
   String? workError;
   DateTime inventoryDate = DateTime.now();
-  int? selectedProcurementBranchId;
   int? selectedVariantId;
   final requestTitleController = TextEditingController();
   final requestQuantityController = TextEditingController();
@@ -122,11 +125,9 @@ class _StaffPageState extends State<StaffPage> {
         final results = await Future.wait<dynamic>([
           workApi.inventory(),
           workApi.requisitions(),
-          workApi.branches(),
         ]);
         inventoryData = results[0] as Map<String, dynamic>;
         requisitionData = results[1] as List<Map<String, dynamic>>;
-        branchOptions = results[2] as List<Map<String, dynamic>>;
       } else if (widget.view == StaffView.approvals) {
         requisitionData = await workApi.requisitions();
       } else if (widget.view == StaffView.customers &&
@@ -153,10 +154,12 @@ class _StaffPageState extends State<StaffPage> {
         final branch = branches
             .where((item) => item['name'] == selectedBranch)
             .firstOrNull;
-        analyticsData = await workApi.analytics(
-          days: int.parse(RegExp(r'\d+').firstMatch(period)!.group(0)!),
-          productId: product?['id'] as int?,
-          branchId: branch?['id'] as int?,
+        analyticsData = normalizeStaffAnalytics(
+          await workApi.analytics(
+            days: int.parse(RegExp(r'\d+').firstMatch(period)!.group(0)!),
+            productId: product?['id'] as int?,
+            branchId: branch?['id'] as int?,
+          ),
         );
       }
       if (mounted) setState(() {});
@@ -221,18 +224,16 @@ class _StaffPageState extends State<StaffPage> {
   }
 
   Future<void> _createAndSubmitRequisition() async {
-    final branchId = selectedProcurementBranchId;
     final variantId = selectedVariantId;
     final quantity = int.tryParse(requestQuantityController.text.trim());
     final title = requestTitleController.text.trim();
     final reason = requestReasonController.text.trim();
-    if (branchId == null ||
-        variantId == null ||
+    if (variantId == null ||
         quantity == null ||
         quantity <= 0 ||
         title.isEmpty ||
         reason.isEmpty) {
-      setState(() => workError = '대리점, 제품, 제목, 수량, 사유를 모두 입력해주세요.');
+      setState(() => workError = '제품, 수량, 제목, 사유를 모두 입력해주세요.');
       return;
     }
     if (actionBusy) return;
@@ -242,7 +243,6 @@ class _StaffPageState extends State<StaffPage> {
     });
     try {
       final created = await workApi.createRequisition(
-        branchId: branchId,
         productVariantId: variantId,
         quantity: quantity,
         title: title,
@@ -313,6 +313,8 @@ class _StaffPageState extends State<StaffPage> {
   Future<void> _selectCustomer(int id) async {
     setState(() {
       selectedCustomerId = id;
+      customerDetail = null;
+      customerDetailLoading = true;
       workError = null;
     });
     try {
@@ -321,7 +323,13 @@ class _StaffPageState extends State<StaffPage> {
         setState(() => customerDetail = detail);
       }
     } on StaffAuthException catch (error) {
-      if (mounted) setState(() => workError = error.message);
+      if (mounted && selectedCustomerId == id) {
+        setState(() => workError = error.message);
+      }
+    } finally {
+      if (mounted && selectedCustomerId == id) {
+        setState(() => customerDetailLoading = false);
+      }
     }
   }
 
@@ -629,10 +637,20 @@ class _StaffPageState extends State<StaffPage> {
   Widget _returns() => _stack([
     _notice(
       widget.isBranch
-          ? '반품 신청은 고객 앱에서 접수됩니다. 소속 지점의 처리 상태를 조회할 수 있습니다.'
-          : '고객 앱의 반품 요청을 확인하고 실물 검수 후 승인 또는 반려합니다.',
+          ? '고객이 방문하면 주문과 상품을 확인해 반품을 접수하세요. 접수 후 본사에서 검수합니다.'
+          : '대리점에서 접수한 반품을 확인하고 실물 검수 후 승인 또는 반려합니다.',
     ),
     _workState(),
+    if (widget.isBranch)
+      _panel(
+        '반품 접수',
+        '고객의 주문번호로 소속 지점 주문을 조회합니다.',
+        BranchReturnRegistration(
+          branchId: widget.selectedBranchId,
+          api: workApi,
+          onRegistered: _loadWork,
+        ),
+      ),
     _panel(
       '반품 진행 현황',
       '현재 접수된 반품 요청',
@@ -733,6 +751,16 @@ class _StaffPageState extends State<StaffPage> {
             ),
           ],
         ]),
+      ),
+    if (!widget.isBranch)
+      _panel(
+        '반품 환불 처리',
+        '본사 검수에서 승인된 반품의 환불 내역을 확인합니다.',
+        ReturnRefundPanel(
+          returns: returnData,
+          api: workApi,
+          onProcessed: _loadWork,
+        ),
       ),
   ]);
 
@@ -940,27 +968,10 @@ class _StaffPageState extends State<StaffPage> {
         '등록한 품의는 팀장·이사 결재로 전달됩니다.',
         _stack([
           DropdownButtonFormField<int>(
-            initialValue: selectedProcurementBranchId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: '관련 대리점',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              for (final branch in branchOptions)
-                DropdownMenuItem(
-                  value: branch['branchId'] as int,
-                  child: Text(branch['branchName'] as String),
-                ),
-            ],
-            onChanged: (value) =>
-                setState(() => selectedProcurementBranchId = value),
-          ),
-          DropdownButtonFormField<int>(
             initialValue: selectedVariantId,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: '제품 옵션',
+              labelText: '제품 선택',
               border: OutlineInputBorder(),
             ),
             items: [
@@ -969,18 +980,20 @@ class _StaffPageState extends State<StaffPage> {
                   value: row['product_variant_id'] as int,
                   child: Text(
                     '${row['product_name']} · ${row['color_name']} / ${row['size_mm']}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
             ],
             onChanged: (value) => setState(() => selectedVariantId = value),
           ),
-          _field('품의 제목', '구매 품의 제목', controller: requestTitleController),
           _field(
             '요청 수량 (켤레)',
             '수량',
             controller: requestQuantityController,
             numeric: true,
           ),
+          _field('품의 제목', '구매 품의 제목', controller: requestTitleController),
           _field(
             '요청 사유',
             '재고 부족 사유',
@@ -1021,13 +1034,12 @@ class _StaffPageState extends State<StaffPage> {
       requisitionData.isEmpty
           ? _empty('품의 내역이 없습니다.')
           : _table(
-              const ['번호', '제목', '대리점', '상태'],
+              const ['번호', '제목', '상태'],
               [
                 for (final row in requisitionData)
                   [
                     '${row['id']}',
                     row['title'].toString(),
-                    row['branchName'].toString(),
                     row['status'].toString(),
                   ],
               ],
@@ -1068,7 +1080,7 @@ class _StaffPageState extends State<StaffPage> {
                 for (final row in pending)
                   _panel(
                     '품의 #${row['id']} · ${row['title']}',
-                    '${row['branchName']} · ${row['employeeName']}',
+                    '${row['employeeName']} · 본사 재고 보충',
                     _stack([
                       Text(row['reason'].toString()),
                       for (final item in row['items'] as List<dynamic>)
@@ -1105,13 +1117,12 @@ class _StaffPageState extends State<StaffPage> {
         requisitionData.isEmpty
             ? _empty('품의 내역이 없습니다.')
             : _table(
-                const ['번호', '제목', '대리점', '상태'],
+                const ['번호', '제목', '상태'],
                 [
                   for (final row in requisitionData)
                     [
                       '${row['id']}',
                       row['title'].toString(),
-                      row['branchName'].toString(),
                       row['status'].toString(),
                     ],
                 ],
@@ -1220,6 +1231,31 @@ class _StaffPageState extends State<StaffPage> {
               '${row['id']}'.contains(query),
         )
         .toList();
+    visible.sort((a, b) {
+      final comparison = switch (customerSort) {
+        '이름순 (가나다)' => a['name'].toString().toLowerCase().compareTo(
+          b['name'].toString().toLowerCase(),
+        ),
+        '누적 결제액 높은순' => _customerNumber(
+          b['paidTotal'],
+        ).compareTo(_customerNumber(a['paidTotal'])),
+        '주문 횟수 많은순' => _customerNumber(
+          b['orderCount'],
+        ).compareTo(_customerNumber(a['orderCount'])),
+        _ =>
+          (DateTime.tryParse('${b['lastOrderedAt']}')?.millisecondsSinceEpoch ??
+                  -1)
+              .compareTo(
+                DateTime.tryParse(
+                      '${a['lastOrderedAt']}',
+                    )?.millisecondsSinceEpoch ??
+                    -1,
+              ),
+      };
+      return comparison != 0
+          ? comparison
+          : _customerNumber(b['id']).compareTo(_customerNumber(a['id']));
+    });
     final selectedInquiry = inquiryData
         .where((row) => row['id'] == selectedInquiryId)
         .firstOrNull;
@@ -1238,61 +1274,66 @@ class _StaffPageState extends State<StaffPage> {
           '고객 목록',
           '고객을 선택하면 구매·반품 내역을 확인합니다.',
           _stack([
-            _field(
-              '고객명 또는 고객 ID',
-              '검색어',
-              onChanged: (value) => setState(() => query = value),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final search = _field(
+                  '고객명 또는 고객 ID',
+                  '검색어',
+                  onChanged: (value) => setState(() => query = value),
+                );
+                final sorting = KeyedSubtree(
+                  key: const Key('customer-sort'),
+                  child: _select(
+                    '정렬 기준',
+                    const ['최근 주문순', '이름순 (가나다)', '누적 결제액 높은순', '주문 횟수 많은순'],
+                    value: customerSort,
+                    onChanged: (value) => setState(() => customerSort = value),
+                  ),
+                );
+                return constraints.maxWidth < 560
+                    ? _stack([search, sorting])
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: search),
+                          const SizedBox(width: 12),
+                          Expanded(child: sorting),
+                        ],
+                      );
+              },
+            ),
+            Text(
+              '검색 결과 ${visible.length}명 · 최근 조회 최대 200명',
+              style: const TextStyle(color: _muted, fontSize: 12),
             ),
             if (visible.isEmpty) _empty('고객이 없습니다.'),
             for (final row in visible)
-              _choiceTile(
-                '${row['name']} · #${row['id']}',
-                '구매 ${row['orderCount']}회 · 누적 ${row['paidTotal']}원',
-                selectedCustomerId == row['id'],
-                () => _selectCustomer(row['id'] as int),
+              KeyedSubtree(
+                key: Key('customer-${row['id']}'),
+                child: _choiceTile(
+                  '${row['name']} · #${row['id']}',
+                  '주문 ${row['orderCount'] ?? 0}회 · 누적 ${_customerAmount(row['paidTotal'])}원',
+                  selectedCustomerId == row['id'],
+                  () => _selectCustomer(row['id'] as int),
+                ),
               ),
           ]),
         ),
         _panel(
           '고객 상세',
-          '선택한 고객의 서버 기록',
-          customerDetail == null
-              ? _empty('고객을 선택해주세요.')
-              : _stack([
-                  Text(
-                    '${customerDetail!['name']} · #${customerDetail!['id']}',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  _detailRow('이메일', customerDetail!['email'].toString()),
-                  _detailRow(
-                    '연락처',
-                    customerDetail!['phone']?.toString() ?? '-',
-                  ),
-                  const Text(
-                    '구매 내역',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  if ((customerDetail!['orders'] as List<dynamic>).isEmpty)
-                    _empty('구매 내역이 없습니다.'),
-                  for (final order
-                      in customerDetail!['orders'] as List<dynamic>)
-                    _detailRow(
-                      order['number'].toString(),
-                      '${order['branchName']} · ${_statusLabel(order['status'].toString())}',
-                    ),
-                  const Text(
-                    '반품 내역',
-                    style: TextStyle(fontWeight: FontWeight.w800),
-                  ),
-                  if ((customerDetail!['returns'] as List<dynamic>).isEmpty)
-                    _empty('반품 내역이 없습니다.'),
-                  for (final item
-                      in customerDetail!['returns'] as List<dynamic>)
-                    _detailRow('반품 #${item['id']}', item['status'].toString()),
-                ]),
+          '기본 정보와 구매·반품 기록',
+          customerDetailLoading
+              ? const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              : customerDetail == null
+              ? _empty(
+                  selectedCustomerId == null
+                      ? '목록에서 고객을 선택해주세요.'
+                      : '상세 정보를 불러오지 못했습니다. 고객을 다시 선택해주세요.',
+                )
+              : _customerDetails(),
         ),
       ),
       _panel(
@@ -1328,6 +1369,178 @@ class _StaffPageState extends State<StaffPage> {
           ],
         ]),
       ),
+    ]);
+  }
+
+  num _customerNumber(dynamic value) => num.tryParse('$value') ?? 0;
+
+  String _customerAmount(dynamic value) => _customerNumber(value)
+      .round()
+      .toString()
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+
+  String _customerDate(dynamic value) {
+    final date = DateTime.tryParse('$value');
+    return date == null
+        ? '기록 없음'
+        : '${date.year}.${date.month.toString().padLeft(2, '0')}.${date.day.toString().padLeft(2, '0')}';
+  }
+
+  Widget _customerDetails() {
+    final detail = customerDetail!;
+    final summary = customerData
+        .where((row) => row['id'] == detail['id'])
+        .firstOrNull;
+    final orders = detail['orders'] as List<dynamic>? ?? [];
+    final returns = detail['returns'] as List<dynamic>? ?? [];
+    Widget contact(IconData icon, String value) => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: _muted, size: 18),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SelectableText(
+            value,
+            style: const TextStyle(color: _ink, fontSize: 13),
+          ),
+        ),
+      ],
+    );
+    Widget section(String title, int count) => Text(
+      '$title · $count건',
+      style: const TextStyle(
+        color: _ink,
+        fontSize: 14,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+    Widget record(String title, String status, List<String> lines) => Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: _ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              _status(switch (status) {
+                'REQUESTED' => '반품 접수',
+                'APPROVED' => '반품 승인',
+                'REJECTED' => '반품 반려',
+                _ => _statusLabel(status),
+              }),
+            ],
+          ),
+          const SizedBox(height: 10),
+          for (final line in lines)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                line,
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 12,
+                  height: 1.45,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    return _stack([
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const CircleAvatar(
+            radius: 24,
+            backgroundColor: Color(0xFFEAF2FF),
+            child: Icon(Icons.person_outline, color: _blue),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail['name'].toString(),
+                  style: const TextStyle(
+                    color: _ink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '고객 ID #${detail['id']}',
+                  style: const TextStyle(color: _muted, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      contact(Icons.mail_outline, detail['email']?.toString() ?? '이메일 미등록'),
+      contact(
+        Icons.phone_outlined,
+        (detail['phone']?.toString().trim().isEmpty ?? true)
+            ? '연락처 미등록'
+            : detail['phone'].toString(),
+      ),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEAF2FF),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: _stack([
+          Text(
+            '주문 ${summary?['orderCount'] ?? '—'}회 · 누적 결제 ${summary == null ? '—' : _customerAmount(summary['paidTotal'])}원',
+            style: const TextStyle(
+              color: _ink,
+              fontWeight: FontWeight.w700,
+              height: 1.5,
+            ),
+          ),
+          Text(
+            '최근 주문 ${_customerDate(summary?['lastOrderedAt'])}  /  적립금 ${summary == null ? '—' : _customerAmount(summary['pointBalance'])}P',
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.5),
+          ),
+        ]),
+      ),
+      const Divider(height: 1),
+      section('구매 내역', orders.length),
+      const Text('최근 최대 50건', style: TextStyle(color: _muted, fontSize: 11)),
+      if (orders.isEmpty) _empty('구매 내역이 없습니다.'),
+      for (final order in orders)
+        record(order['number'].toString(), order['status'].toString(), [
+          '${_customerDate(order['orderedAt'])} · ${order['branchName'] ?? '지점 미지정'}',
+          '결제 금액 ${_customerAmount(order['paidTotal'])}원',
+        ]),
+      const Divider(height: 1),
+      section('반품 내역', returns.length),
+      const Text('최근 최대 50건', style: TextStyle(color: _muted, fontSize: 11)),
+      if (returns.isEmpty) _empty('반품 내역이 없습니다.'),
+      for (final item in returns)
+        record('반품 #${item['id']}', item['status'].toString(), [
+          '주문 ID #${item['orderId']}',
+          item['reason']?.toString() ?? '사유 미등록',
+        ]),
     ]);
   }
 

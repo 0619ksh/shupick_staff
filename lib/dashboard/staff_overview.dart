@@ -3,6 +3,7 @@ import 'package:shupick_staff/auth/staff_session.dart';
 import 'package:shupick_staff/dashboard/staff_order_api.dart';
 import 'package:shupick_staff/dashboard/staff_views.dart';
 import 'package:shupick_staff/dashboard/staff_work_api.dart';
+import 'package:shupick_staff/dashboard/staff_analytics_data.dart';
 
 const _blue = Color(0xFF2563C6);
 const _ink = Color(0xFF1B2B40);
@@ -191,6 +192,7 @@ OverviewSnapshot executiveOverview(
   List<Map<String, dynamic>> requisitions,
   Map<String, dynamic> inventory,
 ) {
+  analytics = normalizeStaffAnalytics(analytics);
   final low = _lowStock(inventory);
   final pending = _count(
     requisitions,
